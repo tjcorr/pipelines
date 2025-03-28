@@ -1,0 +1,63 @@
+name: 'Verify Execution'
+description: 'Verify that a new pipeline execution was created'
+inputs:
+  ado-token: 
+    description: 'The Azure DevOps PAT token'
+    required: true
+  ado-url: 
+    description: 'The Azure DevOps URL'
+    required: true
+  pipeline-name: 
+    description: 'The name of the pipeline to verify execution for'
+    required: true
+  build-url: 
+    description: 'The URL of the pipeline build'
+    required: true
+  variables:
+    description: 'The variables to pass to the pipeline' 
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - name: Verify build queued successfully
+      shell: bash
+      env:
+        ADO_TOKEN: ${{ inputs.ado-token }}
+        ADO_URL: ${{ inputs.ado-url }}
+        PIPELINE_NAME: ${{ inputs.pipeline-name }}
+        BUILD_URL: ${{ inputs.build-url }}
+        VARIABLES: ${{ inputs.variables }}
+      run: |
+        echo "Verifying new pipeline execution was created"
+
+        # Parse build number from the build url 
+        BUILD_ID=$(echo "$BUILD_URL" | grep -oP '(?<=buildId=)\d+')
+
+        # Fetch the latest build details
+        BUILD_RESULTS=$(curl -s -H "Authorization: Basic $(echo -n ":$ADO_TOKEN" | base64 -w0)" "$ADO_URL/_apis/build/builds/$BUILD_ID")
+
+        # Verify definition.name matches the pipeline name
+        BUILD_DEFINITION_NAME=$(echo "$BUILD_RESULTS" | jq -r '.definition.name')
+        if [ "$BUILD_DEFINITION_NAME" != "$PIPELINE_NAME" ]; then
+          echo "❌ Pipeline name does not match the expected name! Found: $BUILD_DEFINITION_NAME, Expected: $PIPELINE_NAME"
+          exit 1
+        fi
+
+        # Verify validationResults is []
+        VALIDATION_RESULTS=$(echo "$BUILD_RESULTS" | jq -r '.validationResults')
+        if [ "$VALIDATION_RESULTS" != "[]" ]; then
+          echo "❌ Validation results are not empty!"
+          exit 1
+        fi
+
+        # If we have build variables, verify they match parameters
+        if [ -n "$VARIABLES" ]; then
+          PARAMETERS=$(echo "$BUILD_RESULTS" | jq -c --sort-keys '.parameters | fromjson')
+          NORMALIZED_VARIABLES=$(echo "$VARIABLES" | jq -c --sort-keys)
+
+          if [ "$PARAMETERS" != "$NORMALIZED_VARIABLES" ]; then
+            echo "❌ Pipeline variables do not match the expected variables! Found: $PARAMETERS, Expected: $NORMALIZED_VARIABLES"
+            exit 1
+          fi
+        fi
