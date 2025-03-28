@@ -3,14 +3,14 @@ name: Integration Tests
 on:
   pull_request:    
     branches:
-      - master
+      - main
       - 'releases/*'
   push:
     branches:
-      - master
+      - main
       - 'releases/*'
   workflow_dispatch:
-    
+
 jobs:
   basic:
     name: Test Basic Pipeline Execution with No Parameters
