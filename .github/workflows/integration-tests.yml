@@ -9,6 +9,8 @@ on:
     branches:
       - master
       - 'releases/*'
+  workflow_dispatch:
+    
 jobs:
   basic:
     name: Test Basic Pipeline Execution with No Parameters
