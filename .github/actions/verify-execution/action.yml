@@ -42,6 +42,8 @@ runs:
         if [ "$BUILD_DEFINITION_NAME" != "$PIPELINE_NAME" ]; then
           echo "❌ Pipeline name does not match the expected name! Found: $BUILD_DEFINITION_NAME, Expected: $PIPELINE_NAME"
           exit 1
+        else
+          echo "✅ Pipeline name matches the expected name: $PIPELINE_NAME"
         fi
 
         # Verify validationResults is []
@@ -49,6 +51,8 @@ runs:
         if [ "$VALIDATION_RESULTS" != "[]" ]; then
           echo "❌ Validation results are not empty!"
           exit 1
+        else
+          echo "✅ Validation results are empty" 
         fi
 
         # If we have build variables, verify they match parameters
@@ -59,5 +63,7 @@ runs:
           if [ "$PARAMETERS" != "$NORMALIZED_VARIABLES" ]; then
             echo "❌ Pipeline variables do not match the expected variables! Found: $PARAMETERS, Expected: $NORMALIZED_VARIABLES"
             exit 1
+          else
+            echo "✅ Pipeline variables match the expected variables: $NORMALIZED_VARIABLES"
           fi
         fi
