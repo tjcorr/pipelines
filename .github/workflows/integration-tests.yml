@@ -37,7 +37,33 @@ jobs:
           ado-url: ${{ vars.ADO_URL }}
           pipeline-name: ${{ env.pipeline-name }}
           build-url: ${{ steps.build.outputs.pipeline-url }}
+          
+  basic-with-id:
+    name: Test Basic Pipeline Execution with Pipeline ID
+    runs-on: ubuntu-latest
 
+    env:
+      pipeline-id: 1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - uses: ./
+        id: build
+        with: 
+          azure-devops-project-url: ${{ vars.ADO_URL }}
+          azure-pipeline-id: ${{ env.pipeline-id }}
+          azure-devops-token: ${{ secrets.ADO_TOKEN }}
+          
+      - name: Verify new pipeline execution
+        uses: ./.github/actions/verify-execution
+        with:
+          ado-token: ${{ secrets.ADO_TOKEN }}
+          ado-url: ${{ vars.ADO_URL }}
+          pipeline-id: ${{ env.pipeline-id }}
+          build-url: ${{ steps.build.outputs.pipeline-url }}
+        
   basic-with-variables:
     name: Test Basic Pipeline Execution with Variables
     runs-on: ubuntu-latest

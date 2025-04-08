@@ -150,15 +150,35 @@ class PipelineRunner {
                 core.info(`Creating connection with Azure DevOps service : "${collectionUrl}"`);
                 let webApi = new azdev.WebApi(collectionUrl, authHandler);
                 core.info("Connection created");
-                let pipelineName = this.taskParameters.azurePipelineName;
                 try {
-                    core.debug(`Triggering Yaml pipeline : "${pipelineName}"`);
-                    yield this.RunYamlPipeline(webApi);
+                    if (this.taskParameters.azurePipelineId) {
+                        // If pipeline ID is specified, use it directly
+                        core.debug(`Triggering pipeline with ID : "${this.taskParameters.azurePipelineId}"`);
+                        yield this.RunYamlPipelineById(webApi);
+                    }
+                    else {
+                        // Fallback to using pipeline name
+                        let pipelineName = this.taskParameters.azurePipelineName;
+                        core.debug(`Triggering Yaml pipeline by name : "${pipelineName}"`);
+                        yield this.RunYamlPipeline(webApi);
+                    }
                 }
                 catch (error) {
                     if (error instanceof pipeline_error_1.PipelineNotFoundError) {
-                        core.debug(`Triggering Designer pipeline : "${pipelineName}"`);
-                        yield this.RunDesignerPipeline(webApi);
+                        // Try Designer pipeline
+                        if (this.taskParameters.azurePipelineId) {
+                            // Try to find designer pipeline by ID
+                            core.debug(`Triggering Designer pipeline with ID: "${this.taskParameters.azurePipelineId}"`);
+                            yield this.RunDesignerPipelineById(webApi);
+                        }
+                        else if (this.taskParameters.azurePipelineName) {
+                            // Try to find designer pipeline by name
+                            core.debug(`Triggering Designer pipeline by name: "${this.taskParameters.azurePipelineName}"`);
+                            yield this.RunDesignerPipeline(webApi);
+                        }
+                        else {
+                            throw new Error(`Pipeline with ID ${this.taskParameters.azurePipelineId} not found`);
+                        }
                     }
                     else {
                         throw error;
@@ -168,6 +188,29 @@ class PipelineRunner {
             catch (error) {
                 let errorMessage = `${error.message}`;
                 core.setFailed(errorMessage);
+            }
+        });
+    }
+    RunYamlPipelineById(webApi) {
+        return __awaiter(this, void 0, void 0, function* () {
+            let projectName = url_parser_1.UrlParser.GetProjectName(this.taskParameters.azureDevopsProjectUrl);
+            let buildDefinitionId = parseInt(this.taskParameters.azurePipelineId);
+            let buildApi = yield webApi.getBuildApi();
+            // Get build definition for the specified definition Id
+            try {
+                let buildDefinition = yield buildApi.getDefinition(projectName, buildDefinitionId);
+                if (!buildDefinition) {
+                    throw new pipeline_error_1.PipelineNotFoundError(`Pipeline with ID "${buildDefinitionId}" not found in project "${projectName}"`);
+                }
+                logger_1.Logger.LogPipelineObject(buildDefinition);
+                // Call the private method to trigger the pipeline
+                yield this._triggerPipeline(webApi, projectName, buildDefinitionId, buildDefinition);
+            }
+            catch (error) {
+                if (error.statusCode === 404) {
+                    throw new pipeline_error_1.PipelineNotFoundError(`Pipeline with ID "${buildDefinitionId}" not found in project "${projectName}"`);
+                }
+                throw error;
             }
         });
     }
@@ -185,6 +228,12 @@ class PipelineRunner {
             // Get build definition for the matching definition Id
             let buildDefinition = yield buildApi.getDefinition(projectName, buildDefinitionId);
             logger_1.Logger.LogPipelineObject(buildDefinition);
+            // Call the private method to trigger the pipeline
+            yield this._triggerPipeline(webApi, projectName, buildDefinitionId, buildDefinition);
+        });
+    }
+    _triggerPipeline(webApi, projectName, buildDefinitionId, buildDefinition) {
+        return __awaiter(this, void 0, void 0, function* () {
             // Fetch repository details from build definition
             let repositoryId = buildDefinition.repository.id.trim();
             let repositoryType = buildDefinition.repository.type.trim();
@@ -268,10 +317,35 @@ class PipelineRunner {
             const pipelineRunResult = yield response.json();
             logger_1.Logger.LogPipelineTriggerOutput(pipelineRunResult);
             if (pipelineRunResult) {
-                logger_1.Logger.LogPipelineTriggered(pipelineName, projectName);
+                // Use pipeline name if available, otherwise use ID
+                const displayName = this.taskParameters.azurePipelineName || `ID: ${buildDefinitionId}`;
+                logger_1.Logger.LogPipelineTriggered(displayName, projectName);
                 if (pipelineRunResult._links && pipelineRunResult._links.web) {
                     logger_1.Logger.LogOutputUrl(pipelineRunResult._links.web.href);
                 }
+            }
+        });
+    }
+    RunDesignerPipelineById(webApi) {
+        return __awaiter(this, void 0, void 0, function* () {
+            let projectName = url_parser_1.UrlParser.GetProjectName(this.taskParameters.azureDevopsProjectUrl);
+            let releaseDefinitionId = parseInt(this.taskParameters.azurePipelineId);
+            let releaseApi = yield webApi.getReleaseApi();
+            // Get release definition for the specified definition Id
+            try {
+                let releaseDefinition = yield releaseApi.getReleaseDefinition(projectName, releaseDefinitionId);
+                if (!releaseDefinition) {
+                    throw new pipeline_error_1.PipelineNotFoundError(`Release pipeline with ID "${releaseDefinitionId}" not found in project "${projectName}"`);
+                }
+                // Call the private method to trigger the designer pipeline
+                const displayName = `ID: ${releaseDefinitionId}`;
+                yield this._triggerDesignerPipeline(webApi, projectName, releaseDefinition, displayName);
+            }
+            catch (error) {
+                if (error.statusCode === 404) {
+                    throw new pipeline_error_1.PipelineNotFoundError(`Release pipeline with ID "${releaseDefinitionId}" not found in project "${projectName}"`);
+                }
+                throw error;
             }
         });
     }
@@ -284,6 +358,12 @@ class PipelineRunner {
             const releaseDefinitions = yield releaseApi.getReleaseDefinitions(projectName, pipelineName, ReleaseInterfaces.ReleaseDefinitionExpands.Artifacts);
             pipeline_helper_1.PipelineHelper.EnsureValidPipeline(projectName, pipelineName, releaseDefinitions);
             let releaseDefinition = releaseDefinitions[0];
+            // Call the private method to trigger the designer pipeline
+            yield this._triggerDesignerPipeline(webApi, projectName, releaseDefinition, pipelineName);
+        });
+    }
+    _triggerDesignerPipeline(webApi, projectName, releaseDefinition, displayName) {
+        return __awaiter(this, void 0, void 0, function* () {
             logger_1.Logger.LogPipelineObject(releaseDefinition);
             // Create ConfigurationVariableValue objects from the input variables
             let variables = undefined;
@@ -332,10 +412,12 @@ class PipelineRunner {
                 variables: variables
             };
             logger_1.Logger.LogPipelineTriggerInput(releaseStartMetadata);
-            // create release
+            // Get release API
+            let releaseApi = yield webApi.getReleaseApi();
+            // Create release
             let release = yield releaseApi.createRelease(releaseStartMetadata, projectName);
             if (release != null) {
-                logger_1.Logger.LogPipelineTriggered(pipelineName, projectName);
+                logger_1.Logger.LogPipelineTriggered(displayName, projectName);
                 logger_1.Logger.LogPipelineTriggerOutput(release);
                 if (release != null && release._links != null) {
                     logger_1.Logger.LogOutputUrl(release._links.web.href);
@@ -389,12 +471,17 @@ const core = __importStar(__nccwpck_require__(2186));
 class TaskParameters {
     constructor() {
         this._azureDevopsProjectUrl = core.getInput('azure-devops-project-url', { required: true });
-        this._azurePipelineName = core.getInput('azure-pipeline-name', { required: true });
+        this._azurePipelineName = core.getInput('azure-pipeline-name', { required: false });
+        this._azurePipelineId = core.getInput('azure-pipeline-id', { required: false });
         this._azureDevopsToken = core.getInput('azure-devops-token', { required: true });
         this._azurePipelineVariables = core.getInput('azure-pipeline-variables', { required: false });
         this._azureTemplateParameters = core.getInput('azure-template-parameters', { required: false });
         this._sourceBranch = core.getInput('source-branch', { required: false });
         this._sourceVersion = core.getInput('source-version', { required: false });
+        // Ensure either pipeline name or ID is provided
+        if (!this._azurePipelineName && !this._azurePipelineId) {
+            throw new Error('Either azure-pipeline-name or azure-pipeline-id must be specified');
+        }
     }
     static getTaskParams() {
         if (!this.taskparams) {
@@ -407,6 +494,9 @@ class TaskParameters {
     }
     get azurePipelineName() {
         return this._azurePipelineName;
+    }
+    get azurePipelineId() {
+        return this._azurePipelineId;
     }
     get azureDevopsToken() {
         return this._azureDevopsToken;

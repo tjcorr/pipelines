@@ -612,4 +612,179 @@ describe('Testing all functions of class PipelineRunner', () => {
         // Clean up mock
         TaskParameters.getTaskParams = originalGetTaskParams;
     });
+
+    test('start() - throw error when neither azure-pipeline-id nor azure-pipeline-name is specified', async () => {
+        // We need to mock TaskParameters instead of just core.getInput to ensure the validation throws
+        const originalTaskParams = TaskParameters.getTaskParams;
+        
+        // Create a TaskParameters-like object with the validation we need to test
+        const mockTaskParamsClass = {
+            getTaskParams: jest.fn().mockImplementation(() => {
+                // This simulates the validation in the TaskParameters constructor
+                throw new Error('Either azure-pipeline-name or azure-pipeline-id must be specified');
+            })
+        };
+        
+        // Replace the TaskParameters class
+        TaskParameters.getTaskParams = mockTaskParamsClass.getTaskParams;
+        
+        jest.spyOn(core, 'setFailed').mockImplementation();
+
+        await (new PipelineRunner(null)).start();
+        
+        // Verify the error was propagated to core.setFailed
+        expect(core.setFailed).toHaveBeenCalledWith(
+            expect.stringContaining('Either azure-pipeline-name or azure-pipeline-id must be specified')
+        );
+
+        // Clean up mock
+        TaskParameters.getTaskParams = originalTaskParams;
+    });
+
+    test('start() - use azure-pipeline-id to trigger YAML pipeline', async () => {
+        // Reset mocks to ensure clean state
+        mockGetDefinition.mockReset();
+        mockFetch.mockClear();
+        
+        // Create mock TaskParameters
+        const originalTaskParams = TaskParameters.getTaskParams;
+        const mockTaskParamsObj = {
+            azureDevopsProjectUrl: 'https://dev.azure.com/organization/my-project',
+            azurePipelineName: '',
+            azurePipelineId: '42',
+            azureDevopsToken: 'my-token',
+            sourceBranch: '',
+            sourceVersion: '',
+            azurePipelineVariables: '',
+            azureTemplateParameters: undefined,
+        }; 
+        
+        // Mock the TaskParameters.getTaskParams static method
+        TaskParameters.getTaskParams = jest.fn().mockReturnValue(mockTaskParamsObj);
+        
+        jest.spyOn(core, 'debug').mockImplementation();
+        jest.spyOn(core, 'info').mockImplementation();
+        
+        // Setup expected return values for getDefinition
+        mockGetDefinition.mockResolvedValue({
+            id: 42,
+            repository: {
+                id: 'repo',
+                type: 'Devops'
+            },
+            project: {
+                id: 'my-project'
+            }
+        });
+        
+        const mockPipelineResult = {
+            _links: {
+                web: {
+                    href: 'linkToRun'
+                }
+            }
+        };
+        mockFetchResponse.json.mockResolvedValue(mockPipelineResult);
+
+        // Set environment variables for the test
+        process.env['GITHUB_REPOSITORY'] = 'repo_name';
+        process.env['GITHUB_REF'] = 'releases';
+        process.env['GITHUB_SHA'] = 'sampleSha';
+        
+        // Run the pipeline using TaskParameters.getTaskParams()
+        const runner = new PipelineRunner(TaskParameters.getTaskParams());
+        await runner.start();
+
+        // Verify that getDefinition was called with the pipeline ID
+        expect(mockGetDefinition).toBeCalledWith('my-project', 42);
+        
+        // Verify fetch was called with correct parameters
+        expect(mockFetch).toHaveBeenCalled();
+        const fetchArgs = mockFetch.mock.calls[0];
+        expect(fetchArgs[0]).toContain('my-project/_apis/pipelines/42/runs');
+
+        // Clean up mock
+        TaskParameters.getTaskParams = originalTaskParams;
+    });
+
+    test('start() - use azure-pipeline-id to trigger designer pipeline when YAML pipeline not found', async () => {
+        // Reset mocks to ensure clean state
+        mockGetDefinition.mockReset();
+        mockGetReleaseApi.mockReset();
+        
+        // Create mock TaskParameters
+        const originalTaskParams = TaskParameters.getTaskParams;
+        const mockTaskParamsObj = {
+            azureDevopsProjectUrl: 'https://dev.azure.com/organization/my-project',
+            azurePipelineName: '',
+            azurePipelineId: '42',
+            azureDevopsToken: 'my-token',
+            sourceBranch: '',
+            sourceVersion: '',
+            azurePipelineVariables: '',
+            azureTemplateParameters: undefined,
+        }; 
+        
+        // Mock the TaskParameters.getTaskParams static method
+        TaskParameters.getTaskParams = jest.fn().mockReturnValue(mockTaskParamsObj);
+        
+        jest.spyOn(core, 'debug').mockImplementation();
+        jest.spyOn(core, 'info').mockImplementation();
+        
+        // Make the YAML pipeline lookup fail with 404
+        mockGetDefinition.mockImplementation(() => {
+            // Create custom error object with statusCode property
+            const error: any = new Error('Not found');
+            error.statusCode = 404;
+            throw error;
+        });
+        
+        // Setup the designer pipeline response
+        const mockReleaseDefinition = {
+            id: 42,
+            artifacts: []
+        };
+
+        const mockGetReleaseDefinition = jest.fn().mockResolvedValue(mockReleaseDefinition);
+        
+        // Add getReleaseDefinition to the mock release API
+        mockGetReleaseApi.mockImplementation(() => {
+            return {
+                getReleaseDefinitions: (project, searchText, artifactType) => mockGetReleaseDefinitions(project, searchText, artifactType),
+                getReleaseDefinition: (project, definitionId) => mockGetReleaseDefinition(project, definitionId),
+                createRelease: (releaseStartMetadata, project) => mockCreateRelease(releaseStartMetadata, project)
+            }
+        });
+        
+        mockReleaseResponse = {
+            _links: {
+                web: {
+                    href: 'linkToRun'
+                }
+            }
+        };
+
+        // Set environment variables for the test
+        process.env['GITHUB_REPOSITORY'] = 'repo_name';
+        process.env['GITHUB_REF'] = 'releases';
+        process.env['GITHUB_SHA'] = 'sampleSha';
+
+        // Run the pipeline using TaskParameters.getTaskParams()
+        const runner = new PipelineRunner(TaskParameters.getTaskParams());
+        await runner.start();
+
+        // Verify that the YAML pipeline was attempted first
+        expect(mockGetDefinition).toBeCalledWith('my-project', 42);
+        
+        // Verify that the designer pipeline was tried next and succeeded
+        expect(mockGetReleaseDefinition).toBeCalledWith('my-project', 42);
+        expect(mockCreateRelease).toBeCalled();
+        
+        // Verify correct release definition ID was used
+        const releaseMetadata = mockCreateRelease.mock.calls[0][0];
+        expect(releaseMetadata.definitionId).toBe(42);
+
+        // Clean up mock
+        TaskParameters.getTaskParams = originalTaskParams;
+    });
 });
