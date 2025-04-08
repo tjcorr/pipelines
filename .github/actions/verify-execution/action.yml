@@ -74,7 +74,7 @@ runs:
 
         # If we have template parameters, verify them
         if [ -n "$TEMPLATE_PARAMETERS" ]; then
-          PARAMETERS=$(echo "$BUILD_RESULTS" | jq -c --sort-keys '.templateParameters | fromjson')
+          PARAMETERS=$(echo "$BUILD_RESULTS" | jq -c --sort-keys '.templateParameters')
           NORMALIZED_VARIABLES=$(echo "$TEMPLATE_PARAMETERS" | jq -c --sort-keys)
 
           if [ "$PARAMETERS" != "$NORMALIZED_VARIABLES" ]; then
