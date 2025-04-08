@@ -494,4 +494,122 @@ describe('Testing all functions of class PipelineRunner', () => {
         // Clean up mock
         TaskParameters.getTaskParams = originalGetTaskParams;
     });
+
+    test('start() - override source branch and source version for yaml pipeline', async () => {
+        // Create a mock TaskParameters object with custom source branch and version
+        const mockTaskParameters = {
+            azureDevopsProjectUrl: 'https://dev.azure.com/organization/my-project',
+            azurePipelineName: 'my-pipeline',
+            azureDevopsToken: 'my-token',
+            azurePipelineVariables: undefined,
+            azureTemplateParameters: undefined,
+            sourceBranch: 'custom-branch',
+            sourceVersion: 'abc123'
+        };
+
+        // Mock the TaskParameters.getTaskParams static method
+        const originalGetTaskParams = TaskParameters.getTaskParams;
+        TaskParameters.getTaskParams = jest.fn().mockReturnValue(mockTaskParameters);
+
+        jest.spyOn(core, 'debug').mockImplementation();
+        jest.spyOn(core, 'info').mockImplementation();
+        mockBuildDefinitions = [{ id: 5 }];
+        mockBuildDefinition = {
+            id: 5,
+            repository: {
+                id: 'repo',
+                type: 'Devops'
+            },
+            project: {
+                id: 'my-project'
+            },
+        };
+        
+        const mockPipelineResult = {
+            _links: {
+                web: {
+                    href: 'linkToRun'
+                }
+            }
+        };
+        mockFetchResponse.json.mockResolvedValue(mockPipelineResult);
+
+        // Set environment variables for the test
+        process.env['GITHUB_REPOSITORY'] = 'repo_name';
+        process.env['GITHUB_REF'] = 'releases';
+        process.env['GITHUB_SHA'] = 'sampleSha';
+
+        await (new PipelineRunner(TaskParameters.getTaskParams())).start();
+        
+        expect(mockFetch).toHaveBeenCalled();
+        const fetchArgs = mockFetch.mock.calls[0];
+        const requestBody = JSON.parse(fetchArgs[1].body);
+        
+        // Verify the custom branch and version were used
+        expect(requestBody.resources).toBeDefined();
+        expect(requestBody.resources.repositories).toBeDefined();
+        expect(requestBody.resources.repositories.self.refName).toBe('custom-branch');
+        expect(requestBody.resources.repositories.self.version).toBe('abc123');
+
+        // Clean up mock
+        TaskParameters.getTaskParams = originalGetTaskParams;
+    });
+
+    test('start() - override source branch and source version for designer pipeline', async () => {
+        // Create a mock TaskParameters object with custom source branch and version
+        const mockTaskParameters = {
+            azureDevopsProjectUrl: 'https://dev.azure.com/organization/my-project',
+            azurePipelineName: 'my-pipeline',
+            azureDevopsToken: 'my-token',
+            azurePipelineVariables: undefined,
+            sourceBranch: 'custom-branch',
+            sourceVersion: 'abc123'
+        };
+
+        // Mock the TaskParameters.getTaskParams static method
+        const originalGetTaskParams = TaskParameters.getTaskParams;
+        TaskParameters.getTaskParams = jest.fn().mockReturnValue(mockTaskParameters);
+
+        jest.spyOn(core, 'debug').mockImplementation();
+        jest.spyOn(core, 'info').mockImplementation();
+        mockBuildDefinitions = null;
+        mockReleaseDefinitions = [{
+            id: 5,
+            artifacts: [{
+                type: 'GitHub',
+                definitionReference: {
+                    definition: {
+                        name: 'repo_name'
+                    }
+                },
+                alias: 'github_artifact'
+            }]
+        }];
+        mockReleaseResponse = {
+            _links: {
+                web: {
+                    href: 'linkToRun'
+                }
+            }
+        }
+
+        // Set environment variables for the test
+        process.env['GITHUB_REPOSITORY'] = 'repo_name';
+        process.env['GITHUB_REF'] = 'releases';
+        process.env['GITHUB_SHA'] = 'sampleSha';
+
+        await (new PipelineRunner(TaskParameters.getTaskParams())).start();
+        
+        expect(mockCreateRelease).toHaveBeenCalled();
+        const releaseMetadata = mockCreateRelease.mock.calls[0][0];
+        
+        // Verify the artifact metadata has the custom branch and version
+        expect(releaseMetadata.artifacts.length).toBe(1);
+        expect(releaseMetadata.artifacts[0].instanceReference.sourceBranch).toBe('custom-branch');
+        expect(releaseMetadata.artifacts[0].instanceReference.sourceVersion).toBe('abc123');
+        expect(releaseMetadata.artifacts[0].instanceReference.id).toBe('abc123');
+
+        // Clean up mock
+        TaskParameters.getTaskParams = originalGetTaskParams;
+    });
 });

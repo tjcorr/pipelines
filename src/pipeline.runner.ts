@@ -84,6 +84,17 @@ export class PipelineRunner {
             core.debug("pipeline is not linked to same Github repo");
         }
 
+        // Check if source branch and version are provided as input parameters
+        if (this.taskParameters.sourceBranch) {
+            sourceBranch = this.taskParameters.sourceBranch;
+            core.debug(`Using provided source branch: ${sourceBranch}`);
+        }
+
+        if (this.taskParameters.sourceVersion) {
+            sourceVersion = this.taskParameters.sourceVersion;
+            core.debug(`Using provided source version: ${sourceVersion}`);
+        }
+
         // Create the request body for the Pipelines API
         const resources: any = {};
         
@@ -189,18 +200,22 @@ export class PipelineRunner {
             core.debug("Pipeline is linked to GitHub artifact. Looking for now matching repository");
             gitHubArtifacts.forEach(gitHubArtifact => {
                 if (gitHubArtifact.definitionReference != null && p.equals(gitHubArtifact.definitionReference.definition.name, this.repository)) {
+                    // Prepare branch and version info
+                    let branchToUse = this.taskParameters.sourceBranch || this.branch;
+                    let versionToUse = this.taskParameters.sourceVersion || this.commitId;
+                    
                     // Add version information for matching GitHub artifact
                     let artifactMetadata = <ReleaseInterfaces.ArtifactMetadata>{
                         alias: gitHubArtifact.alias,
                         instanceReference: <ReleaseInterfaces.BuildVersion>{
-                            id: this.commitId,
-                            sourceBranch: this.branch,
+                            id: versionToUse,
+                            sourceBranch: branchToUse,
                             sourceRepositoryType: this.githubRepo,
                             sourceRepositoryId: this.repository,
-                            sourceVersion: this.commitId
+                            sourceVersion: versionToUse
                         }
                     }
-                    core.debug("pipeline is linked to same Github repo");
+                    core.debug(`pipeline is linked to same Github repo, using branch: ${branchToUse}, version: ${versionToUse}`);
                     artifacts.push(artifactMetadata);
                 }
             });
