@@ -6,6 +6,7 @@ export class TaskParameters {
     private _azurePipelineName: string;
     private _azureDevopsToken: string;
     private _azurePipelineVariables: string;
+    private _azureTemplateParameters: string;
 
     private constructor() {
         this._azureDevopsProjectUrl = core.getInput('azure-devops-project-url', { required: true });
@@ -36,5 +37,9 @@ export class TaskParameters {
 
     public get azurePipelineVariables() {
         return this._azurePipelineVariables;
+    }
+
+    public get azureTemplateParameters() {
+        return this._azureTemplateParameters ? JSON.parse(this._azureTemplateParameters): undefined;
     }
 }

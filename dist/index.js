@@ -206,7 +206,8 @@ class PipelineRunner {
                 sourceBranch: sourceBranch,
                 sourceVersion: sourceVersion,
                 reason: BuildInterfaces.BuildReason.Triggered,
-                parameters: this.taskParameters.azurePipelineVariables
+                parameters: this.taskParameters.azurePipelineVariables,
+                templateParameters: this.taskParameters.azureTemplateParameters
             };
             logger_1.Logger.LogPipelineTriggerInput(build);
             // Queue build
@@ -294,6 +295,12 @@ class PipelineRunner {
     }
 }
 exports.PipelineRunner = PipelineRunner;
+// TODO template parameters for designer pipelines ? is this a thing
+//      seems like it is not supported in the API
+// support source branch and source version
+// support pipeline id
+// write tests for all the above
+// add better IT for designer pipelines
 
 
 /***/ }),
@@ -353,6 +360,9 @@ class TaskParameters {
     }
     get azurePipelineVariables() {
         return this._azurePipelineVariables;
+    }
+    get azureTemplateParameters() {
+        return this._azureTemplateParameters ? JSON.parse(this._azureTemplateParameters) : undefined;
     }
 }
 exports.TaskParameters = TaskParameters;

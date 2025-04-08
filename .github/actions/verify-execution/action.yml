@@ -16,6 +16,9 @@ inputs:
   variables:
     description: 'The variables to pass to the pipeline' 
     required: false
+  template-parameters:
+    description: 'The template parameters to pass to the pipeline'
+    required: false
 
 runs:
   using: "composite"
@@ -28,6 +31,7 @@ runs:
         PIPELINE_NAME: ${{ inputs.pipeline-name }}
         BUILD_URL: ${{ inputs.build-url }}
         VARIABLES: ${{ inputs.variables }}
+        TEMPLATE_PARAMETERS: ${{ inputs.template-parameters }}
       run: |
         echo "Verifying new pipeline execution was created"
 
@@ -55,7 +59,7 @@ runs:
           echo "✅ Validation results are empty" 
         fi
 
-        # If we have build variables, verify they match parameters
+        # If we have build variables, verify them
         if [ -n "$VARIABLES" ]; then
           PARAMETERS=$(echo "$BUILD_RESULTS" | jq -c --sort-keys '.parameters | fromjson')
           NORMALIZED_VARIABLES=$(echo "$VARIABLES" | jq -c --sort-keys)
@@ -65,5 +69,18 @@ runs:
             exit 1
           else
             echo "✅ Pipeline variables match the expected variables: $NORMALIZED_VARIABLES"
+          fi
+        fi
+
+        # If we have template parameters, verify them
+        if [ -n "$TEMPLATE_PARAMETERS" ]; then
+          PARAMETERS=$(echo "$BUILD_RESULTS" | jq -c --sort-keys '.templateParameters | fromjson')
+          NORMALIZED_VARIABLES=$(echo "$TEMPLATE_PARAMETERS" | jq -c --sort-keys)
+
+          if [ "$PARAMETERS" != "$NORMALIZED_VARIABLES" ]; then
+            echo "❌ Template parameters do not match the expected parameters! Found: $PARAMETERS, Expected: $NORMALIZED_VARIABLES"
+            exit 1
+          else
+            echo "✅ Template parameters match the expected parameters: $NORMALIZED_VARIABLES"
           fi
         fi
