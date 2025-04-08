@@ -7,8 +7,9 @@ import { PipelineNotFoundError } from './pipeline.error';
 import * as ReleaseInterfaces from 'azure-devops-node-api/interfaces/ReleaseInterfaces';
 import * as BuildInterfaces from 'azure-devops-node-api/interfaces/BuildInterfaces';
 import { PipelineHelper as p } from './util/pipeline.helper';
-import { Logger as log } from './util/logger';
+import { Logger as log, Logger } from './util/logger';
 import { UrlParser } from './util/url.parser';
+import { LogicalOperation } from 'azure-devops-node-api/interfaces/WorkItemTrackingInterfaces';
 
 export class PipelineRunner {
     public taskParameters: TaskParameters;
@@ -129,6 +130,10 @@ export class PipelineRunner {
             'Authorization': `Basic ${Buffer.from(':' + token).toString('base64')}`,
             'Content-Type': 'application/json'
         };
+
+        Logger.LogInfo(`Triggering pipeline at : "${pipelinesUrl}"`);
+        Logger.LogInfo(`Headers : "${JSON.stringify(headers)}"`);
+        Logger.LogInfo(`Body : "${JSON.stringify(pipelineParameters)}"`);
 
         // Make the REST call to run the pipeline
         const response = await fetch(pipelinesUrl, {
