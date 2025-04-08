@@ -6,6 +6,24 @@ import { UrlParser } from '../src/util/url.parser'
 import * as core from '@actions/core';
 import { PipelineNotFoundError } from '../src/pipeline.error';
 
+// Mock fetch without using variables that would be hoisted
+jest.mock('node-fetch', () => {
+    return jest.fn();
+});
+
+// Get a reference to the mocked fetch function
+import fetch from 'node-fetch';
+const mockFetch = fetch as jest.MockedFunction<typeof fetch>;
+
+// Configure the mock fetch response
+const mockFetchResponse = {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: jest.fn(),
+    text: jest.fn()
+};
+
 var mockQueueBuildResult;
 const mockQueueBuild = jest.fn().mockImplementation(() => {
     return mockQueueBuildResult;
@@ -165,6 +183,19 @@ describe('Testing all functions of class UrlParser', () => {
 });
 
 describe('Testing all functions of class PipelineRunner', () => {
+    beforeEach(() => {
+        // Reset mocks before each test
+        mockFetch.mockClear();
+        mockFetchResponse.json.mockReset();
+        mockFetchResponse.text.mockReset();
+        mockFetchResponse.ok = true;
+        mockFetchResponse.status = 200;
+        mockFetchResponse.statusText = 'OK';
+        
+        // Configure mockFetch to return our mockFetchResponse
+        mockFetch.mockResolvedValue(mockFetchResponse);
+    });
+    
     test('start() - regular run using env variables and inputs to trigger a run', async () => {
         jest.spyOn(core, 'getInput').mockImplementation((input, options) => {
             process.env['GITHUB_REPOSITORY'] = 'repo_name';
@@ -190,31 +221,36 @@ describe('Testing all functions of class PipelineRunner', () => {
                 id: 'my-project'
             },
         }
-        mockQueueBuildResult = {
+        
+        // Setup fetch response for the pipeline run
+        const mockPipelineResult = {
             _links: {
                 web: {
                     href: 'linkToRun'
                 }
             }
         };
+        mockFetchResponse.json.mockResolvedValue(mockPipelineResult);
 
         expect(await (new PipelineRunner(TaskParameters.getTaskParams())).start()).toBeUndefined();
         expect(mockGetPersonalAccessTokenHandler).toBeCalledWith('my-token');
         expect(mockGetBuildApi).toBeCalled();
         expect(mockGetDefinitions).toBeCalledWith('my-project', 'my-pipeline');
         expect(mockGetDefinition).toBeCalledWith('my-project', 5);
-        const expectedBuild = {
-            definition: {
-                id: 5,
-            },
-            project: {
-                id: 'my-project',
-            },
-            reason: 1967,
-            sourceBranch: null,
-            sourceVersion: null,
-        }
-        expect(mockQueueBuild).toBeCalledWith(expectedBuild, 'my-project', true);
+        
+        // Verify fetch was called with correct parameters
+        expect(mockFetch).toHaveBeenCalled();
+        const fetchArgs = mockFetch.mock.calls[0];
+        expect(fetchArgs[0]).toContain('my-project/_apis/pipelines/5/runs');
+        expect(fetchArgs[1]).toHaveProperty('method', 'POST');
+        expect(fetchArgs[1]).toHaveProperty('headers');
+        expect(fetchArgs[1].headers).toHaveProperty('Authorization');
+        expect(fetchArgs[1].headers).toHaveProperty('Content-Type', 'application/json');
+        
+        // Verify body was correctly formed
+        const requestBody = JSON.parse(fetchArgs[1].body);
+        // Empty or minimal body since repository is not linked to same Github repo
+        expect(Object.keys(requestBody)).toHaveLength(0);
     });
 
     test('start() - set core failed in RunYamlPipeline if result has errors', async () => {
@@ -243,26 +279,30 @@ describe('Testing all functions of class PipelineRunner', () => {
                 id: 'my-project'
             },
         }
-        mockQueueBuildResult = {
-            validationResults: [{}]
-        };
+        
+        // Setup fetch to simulate an error response
+        mockFetchResponse.ok = false;
+        mockFetchResponse.status = 400;
+        mockFetchResponse.statusText = 'Bad Request';
+        mockFetchResponse.text.mockResolvedValue('Error validating pipeline run');
+
         expect(await (new PipelineRunner(TaskParameters.getTaskParams())).start()).toBeUndefined();
         expect(mockGetPersonalAccessTokenHandler).toBeCalledWith('my-token');
         expect(mockGetBuildApi).toBeCalled();
         expect(mockGetDefinitions).toBeCalledWith('my-project', 'my-pipeline');
         expect(mockGetDefinition).toBeCalledWith('my-project', 5);
-        const expectedBuild = {
-            definition: {
-                id: 5,
-            },
-            project: {
-                id: 'my-project',
-            },
-            reason: 1967,
-            sourceBranch: 'releases',
-            sourceVersion: 'sampleSha',
-        }
-        expect(mockQueueBuild).toBeCalledWith(expectedBuild, 'my-project', true);
+        
+        // Verify fetch was called with correct parameters
+        expect(mockFetch).toHaveBeenCalled();
+        const fetchArgs = mockFetch.mock.calls[0];
+        expect(fetchArgs[0]).toContain('my-project/_apis/pipelines/5/runs');
+        
+        // Verify body includes correct branches and versions since repo is GitHub type
+        const requestBody = JSON.parse(fetchArgs[1].body);
+        expect(requestBody.resources.repositories.self.refName).toBe('releases');
+        expect(requestBody.resources.repositories.self.version).toBe('sampleSha');
+        
+        // Verify error was reported
         expect(core.setFailed).toBeCalled();
     });
 
@@ -327,4 +367,4 @@ describe('Testing all functions of class PipelineRunner', () => {
         };
         expect(mockCreateRelease).toBeCalledWith(expectedRelease, "my-project");
     });
-}); 
+});

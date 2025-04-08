@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
 import * as azdev from "azure-devops-node-api";
+import fetch from 'node-fetch';
 import { TaskParameters } from './task.parameters';
 import { PipelineNotFoundError } from './pipeline.error';
 
@@ -76,42 +77,78 @@ export class PipelineRunner {
         // If definition is linked to existing github repo, pass github source branch and source version to build
         if (p.equals(repositoryId, this.repository) && p.equals(repositoryType, this.githubRepo)) {
             core.debug("pipeline is linked to same Github repo");
-            sourceBranch = this.branch,
-                sourceVersion = this.commitId
+            sourceBranch = this.branch;
+            sourceVersion = this.commitId;
         } else {
             core.debug("pipeline is not linked to same Github repo");
         }
 
-        let build: BuildInterfaces.Build = {
-            definition: {
-                id: buildDefinition.id
-            },
-            project: {
-                id: buildDefinition.project.id
-            },
-            sourceBranch: sourceBranch,
-            sourceVersion: sourceVersion,
-            reason: BuildInterfaces.BuildReason.Triggered,
-            parameters: this.taskParameters.azurePipelineVariables,
-            templateParameters: this.taskParameters.azureTemplateParameters
-        } as BuildInterfaces.Build;
-
-        log.LogPipelineTriggerInput(build);
-
-        // Queue build
-        let buildQueueResult = await buildApi.queueBuild(build, build.project.id, true);
-        if (buildQueueResult != null) {
-            log.LogPipelineTriggerOutput(buildQueueResult);
-            // If build result contains validation errors set result to FAILED
-            if (buildQueueResult.validationResults != null && buildQueueResult.validationResults.length > 0) {
-                let errorAndWarningMessage = p.getErrorAndWarningMessageFromBuildResult(buildQueueResult.validationResults);
-                core.setFailed("Errors: " + errorAndWarningMessage.errorMessage + " Warnings: " + errorAndWarningMessage.warningMessage);
-            }
-            else {
-                log.LogPipelineTriggered(pipelineName, projectName);
-                if (buildQueueResult._links != null) {
-                    log.LogOutputUrl(buildQueueResult._links.web.href);
+        // Create the request body for the Pipelines API
+        const resources: any = {};
+        
+        // Set up repository resources if needed
+        if (sourceBranch !== null && sourceVersion !== null) {
+            resources.repositories = {
+                self: {
+                    refName: sourceBranch,
+                    version: sourceVersion
                 }
+            };
+        }
+
+        // Set template parameters and variables
+        const pipelineParameters: any = {};
+        if (this.taskParameters.azureTemplateParameters) {
+            pipelineParameters.templateParameters = this.taskParameters.azureTemplateParameters;
+        }
+        if (this.taskParameters.azurePipelineVariables) {
+            pipelineParameters.variables = {};
+            const variables = JSON.parse(this.taskParameters.azurePipelineVariables);
+            Object.keys(variables).forEach(key => {
+                pipelineParameters.variables[key] = {
+                    value: variables[key]
+                };
+            });
+        }
+
+        // Add resources if defined
+        if (Object.keys(resources).length > 0) {
+            pipelineParameters.resources = resources;
+        }
+
+        log.LogPipelineTriggerInput(pipelineParameters);
+
+        // Make a direct REST API call to trigger the pipeline
+        const pipelinesUrl = `${webApi.serverUrl}/${projectName}/_apis/pipelines/${buildDefinitionId}/runs?api-version=7.1`;
+        
+        // Get token directly from task parameters
+        const token = this.taskParameters.azureDevopsToken;
+        
+        // Create headers for our request
+        const headers = {
+            'Authorization': `Basic ${Buffer.from(':' + token).toString('base64')}`,
+            'Content-Type': 'application/json'
+        };
+
+        // Make the REST call to run the pipeline
+        const response = await fetch(pipelinesUrl, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(pipelineParameters)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to trigger pipeline: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+
+        const pipelineRunResult = await response.json()
+        log.LogPipelineTriggerOutput(pipelineRunResult);
+        
+        if (pipelineRunResult) {
+            log.LogPipelineTriggered(pipelineName, projectName);
+            if (pipelineRunResult._links && pipelineRunResult._links.web) {
+                log.LogOutputUrl(pipelineRunResult._links.web.href);
             }
         }
     }
