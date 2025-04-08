@@ -131,10 +131,6 @@ export class PipelineRunner {
             'Content-Type': 'application/json'
         };
 
-        Logger.LogInfo(`Triggering pipeline at : "${pipelinesUrl}"`);
-        Logger.LogInfo(`Headers : "${JSON.stringify(headers)}"`);
-        Logger.LogInfo(`Body : "${JSON.stringify(pipelineParameters)}"`);
-
         // Make the REST call to run the pipeline
         const response = await fetch(pipelinesUrl, {
             method: 'POST',

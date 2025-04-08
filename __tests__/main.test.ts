@@ -13,6 +13,7 @@ jest.mock('node-fetch', () => {
 
 // Get a reference to the mocked fetch function
 import fetch from 'node-fetch';
+import { log } from 'console';
 const mockFetch = fetch as jest.MockedFunction<typeof fetch>;
 
 // Configure the mock fetch response
@@ -255,10 +256,6 @@ describe('Testing all functions of class PipelineRunner', () => {
 
     test('start() - set core failed in RunYamlPipeline if result has errors', async () => {
         jest.spyOn(core, 'getInput').mockImplementation((input, options) => {
-            process.env['GITHUB_REPOSITORY'] = 'repo_name';
-            process.env['GITHUB_REF'] = 'releases';
-            process.env['GITHUB_SHA'] = 'sampleSha';
-
             if (input == 'azure-devops-project-url') return 'https://dev.azure.com/organization/my-project';
             if (input == 'azure-pipeline-name') return 'my-pipeline';
             if (input == 'azure-devops-token') return 'my-token';
@@ -286,7 +283,13 @@ describe('Testing all functions of class PipelineRunner', () => {
         mockFetchResponse.statusText = 'Bad Request';
         mockFetchResponse.text.mockResolvedValue('Error validating pipeline run');
 
-        expect(await (new PipelineRunner(TaskParameters.getTaskParams())).start()).toBeUndefined();
+        // Set environment variables for the test
+        process.env['GITHUB_REPOSITORY'] = 'repo_name';
+        process.env['GITHUB_REF'] = 'releases';
+        process.env['GITHUB_SHA'] = 'sampleSha';
+
+        await (new PipelineRunner(TaskParameters.getTaskParams())).start();
+
         expect(mockGetPersonalAccessTokenHandler).toBeCalledWith('my-token');
         expect(mockGetBuildApi).toBeCalled();
         expect(mockGetDefinitions).toBeCalledWith('my-project', 'my-pipeline');
@@ -366,5 +369,129 @@ describe('Testing all functions of class PipelineRunner', () => {
             reason: 2
         };
         expect(mockCreateRelease).toBeCalledWith(expectedRelease, "my-project");
+    });
+
+    test('start() - azure-pipeline-variables passed as JSON for yaml pipeline', async () => {
+        // Create a mock TaskParameters object
+        const mockTaskParameters = {
+            azureDevopsProjectUrl: 'https://dev.azure.com/organization/my-project',
+            azurePipelineName: 'my-pipeline',
+            azureDevopsToken: 'my-token',
+            azurePipelineVariables: '{"var1": "value1", "var2": "value2"}',
+            azureTemplateParameters: undefined
+        };
+
+        // Mock the TaskParameters.getTaskParams static method
+        const originalGetTaskParams = TaskParameters.getTaskParams;
+        TaskParameters.getTaskParams = jest.fn().mockReturnValue(mockTaskParameters);
+
+        jest.spyOn(core, 'debug').mockImplementation();
+        jest.spyOn(core, 'info').mockImplementation();
+        mockBuildDefinitions = [{ id: 5 }];
+        mockBuildDefinition = {
+            id: 5,
+            repository: {
+                id: 'repo',
+                type: 'Devops'
+            },
+            project: {
+                id: 'my-project'
+            },
+        };
+        
+        const mockPipelineResult = {
+            _links: {
+                web: {
+                    href: 'linkToRun'
+                }
+            }
+        };
+        mockFetchResponse.json.mockResolvedValue(mockPipelineResult);
+
+        // Set environment variables for the test
+        process.env['GITHUB_REPOSITORY'] = 'repo_name';
+        process.env['GITHUB_REF'] = 'releases';
+        process.env['GITHUB_SHA'] = 'sampleSha';
+
+        await (new PipelineRunner(TaskParameters.getTaskParams())).start();
+        
+        expect(mockFetch).toHaveBeenCalled();
+        const fetchArgs = mockFetch.mock.calls[0];
+        console.log('Request body:', fetchArgs[1].body);
+        const requestBody = JSON.parse(fetchArgs[1].body);
+        
+        // Verify variables were parsed correctly
+        expect(requestBody.variables).toBeDefined();
+        expect(requestBody.variables.var1).toEqual({ value: 'value1' });
+        expect(requestBody.variables.var2).toEqual({ value: 'value2' });
+
+        // Clean up mock
+        TaskParameters.getTaskParams = originalGetTaskParams;
+    });
+
+    test('start() - azure-template-parameters passed as JSON for yaml pipeline', async () => {
+        // Create a mock TaskParameters object with template parameters
+        const mockTaskParameters = {
+            azureDevopsProjectUrl: 'https://dev.azure.com/organization/my-project',
+            azurePipelineName: 'my-pipeline',
+            azureDevopsToken: 'my-token',
+            azurePipelineVariables: undefined,
+            // Note: this should be the parsed object, not the string
+            azureTemplateParameters: {
+                param1: 'value1',
+                param2: 42,
+                param3: true
+            }
+        };
+
+        // Mock the TaskParameters.getTaskParams static method
+        const originalGetTaskParams = TaskParameters.getTaskParams;
+        TaskParameters.getTaskParams = jest.fn().mockReturnValue(mockTaskParameters);
+
+        jest.spyOn(core, 'debug').mockImplementation();
+        jest.spyOn(core, 'info').mockImplementation();
+        mockBuildDefinitions = [{ id: 5 }];
+        mockBuildDefinition = {
+            id: 5,
+            repository: {
+                id: 'repo',
+                type: 'Devops'
+            },
+            project: {
+                id: 'my-project'
+            },
+        };
+        
+        const mockPipelineResult = {
+            _links: {
+                web: {
+                    href: 'linkToRun'
+                }
+            }
+        };
+        mockFetchResponse.json.mockResolvedValue(mockPipelineResult);
+
+        // Set environment variables for the test
+        process.env['GITHUB_REPOSITORY'] = 'repo_name';
+        process.env['GITHUB_REF'] = 'releases';
+        process.env['GITHUB_SHA'] = 'sampleSha';
+
+        await (new PipelineRunner(TaskParameters.getTaskParams())).start();
+        
+        expect(mockFetch).toHaveBeenCalled();
+        const fetchArgs = mockFetch.mock.calls[0];
+        console.log('Template parameters test - Request body:', fetchArgs[1].body);
+        const requestBody = JSON.parse(fetchArgs[1].body);
+        
+        // Verify template parameters were parsed correctly
+        expect(requestBody.templateParameters).toBeDefined();
+        expect(requestBody.templateParameters).toEqual({
+            param1: 'value1',
+            param2: 42,
+            param3: true
+        });
+        
+        // Clean up mock
+        TaskParameters.getTaskParams = originalGetTaskParams;
     });
 });
