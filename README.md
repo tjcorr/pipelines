@@ -26,7 +26,7 @@ Action takes Project URL, pipeline name and a [Personal Access Token (PAT)](http
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `azure-devops-project-url` | Yes | Fully qualified URL to the Azure DevOps organization along with project name (e.g., https://dev.azure.com/organization/project-name or https://server.example.com:8080/tfs/DefaultCollection/project-name) |
+| `azure-devops-project-url` | Yes | Fully qualified URL to the Azure DevOps organization along with project name (e.g., https://dev.azure.com/organization/project-name) |
 | `azure-pipeline-name` | No* | Name of the Azure Pipeline to be triggered |
 | `azure-pipeline-id` | No* | The build definition ID of the Azure Pipeline to be triggered |
 | `azure-pipeline-variables` | No | Set/Overwrite pipeline variables as a stringified JSON |
