@@ -7,14 +7,20 @@ inputs:
   ado-url: 
     description: 'The Azure DevOps URL'
     required: true
+  pipeline-id: 
+    description: 'The id of the pipeline to verify execution for'
+    required: false
   pipeline-name: 
     description: 'The name of the pipeline to verify execution for'
-    required: true
+    required: false
   build-url: 
     description: 'The URL of the pipeline build'
     required: true
   variables:
     description: 'The variables to pass to the pipeline' 
+    required: false
+  template-parameters:
+    description: 'The template parameters to pass to the pipeline'
     required: false
 
 runs:
@@ -25,9 +31,11 @@ runs:
       env:
         ADO_TOKEN: ${{ inputs.ado-token }}
         ADO_URL: ${{ inputs.ado-url }}
+        PIPELINE_ID: ${{ inputs.pipeline-id }}
         PIPELINE_NAME: ${{ inputs.pipeline-name }}
         BUILD_URL: ${{ inputs.build-url }}
         VARIABLES: ${{ inputs.variables }}
+        TEMPLATE_PARAMETERS: ${{ inputs.template-parameters }}
       run: |
         echo "Verifying new pipeline execution was created"
 
@@ -37,13 +45,33 @@ runs:
         # Fetch the latest build details
         BUILD_RESULTS=$(curl -s -H "Authorization: Basic $(echo -n ":$ADO_TOKEN" | base64 -w0)" "$ADO_URL/_apis/build/builds/$BUILD_ID")
 
-        # Verify definition.name matches the pipeline name
-        BUILD_DEFINITION_NAME=$(echo "$BUILD_RESULTS" | jq -r '.definition.name')
-        if [ "$BUILD_DEFINITION_NAME" != "$PIPELINE_NAME" ]; then
-          echo "❌ Pipeline name does not match the expected name! Found: $BUILD_DEFINITION_NAME, Expected: $PIPELINE_NAME"
-          exit 1
+        # Verify pipeline-id matches the build definition id, but only if pipeline id is provided
+        if [ -n "$PIPELINE_ID" ]; then
+          BUILD_ID=$(echo "$BUILD_RESULTS" | jq -r '.definition.id')
+          if [ "$BUILD_ID" != "$PIPELINE_ID" ]; then
+            echo "❌ Pipeline id does not match the expected id! Found: $BUILD_ID, Expected: $PIPELINE_ID"
+            exit 1
+          else
+            echo "✅ Pipeline id matches the expected id: $PIPELINE_ID"
+          fi
         else
-          echo "✅ Pipeline name matches the expected name: $PIPELINE_NAME"
+          # If pipeline id is not provided, just show what was found
+          echo "ℹ️ Pipeline id check skipped. Found pipeline id: $BUILD_ID"
+        fi
+
+        # Verify definition.name matches the pipeline name, but only if pipeline name is provided
+        if [ -n "$PIPELINE_NAME" ]; then
+          BUILD_DEFINITION_NAME=$(echo "$BUILD_RESULTS" | jq -r '.definition.name')
+          if [ "$BUILD_DEFINITION_NAME" != "$PIPELINE_NAME" ]; then
+            echo "❌ Pipeline name does not match the expected name! Found: $BUILD_DEFINITION_NAME, Expected: $PIPELINE_NAME"
+            exit 1
+          else
+            echo "✅ Pipeline name matches the expected name: $PIPELINE_NAME"
+          fi
+        else
+          # If pipeline name is not provided, just show what was found
+          BUILD_DEFINITION_NAME=$(echo "$BUILD_RESULTS" | jq -r '.definition.name')
+          echo "ℹ️ Pipeline name check skipped. Found pipeline name: $BUILD_DEFINITION_NAME"
         fi
 
         # Verify validationResults is []
@@ -55,7 +83,7 @@ runs:
           echo "✅ Validation results are empty" 
         fi
 
-        # If we have build variables, verify they match parameters
+        # If we have build variables, verify them
         if [ -n "$VARIABLES" ]; then
           PARAMETERS=$(echo "$BUILD_RESULTS" | jq -c --sort-keys '.parameters | fromjson')
           NORMALIZED_VARIABLES=$(echo "$VARIABLES" | jq -c --sort-keys)
@@ -65,5 +93,18 @@ runs:
             exit 1
           else
             echo "✅ Pipeline variables match the expected variables: $NORMALIZED_VARIABLES"
+          fi
+        fi
+
+        # If we have template parameters, verify them
+        if [ -n "$TEMPLATE_PARAMETERS" ]; then
+          PARAMETERS=$(echo "$BUILD_RESULTS" | jq -c --sort-keys '.templateParameters')
+          NORMALIZED_VARIABLES=$(echo "$TEMPLATE_PARAMETERS" | jq -c --sort-keys)
+
+          if [ "$PARAMETERS" != "$NORMALIZED_VARIABLES" ]; then
+            echo "❌ Template parameters do not match the expected parameters! Found: $PARAMETERS, Expected: $NORMALIZED_VARIABLES"
+            exit 1
+          else
+            echo "✅ Template parameters match the expected parameters: $NORMALIZED_VARIABLES"
           fi
         fi
