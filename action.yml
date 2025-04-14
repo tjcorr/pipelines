@@ -1,5 +1,6 @@
 name: 'Run Azure DevOps Pipeline' 
-description: 'Trigger a run of a Azure DevOps Pipeline' 
+description: 'Trigger a run of a Azure DevOps Pipeline'
+author: 'tjcorr'
 inputs:
   azure-devops-project-url:
     description: 'Fully qualified URL to the Azure DevOps organization along with project name(eg, https://dev.azure.com/organization/project-name or https://server.example.com:8080/tfs/DefaultCollection/project-name)' 
@@ -16,3 +17,6 @@ inputs:
 runs: 
   using: 'node20' 
   main: 'dist/index.js'
+branding:
+  icon: 'play'
+  color: 'green'
