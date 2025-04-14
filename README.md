@@ -14,7 +14,7 @@ Use this action to trigger a specific pipeline (YAML or Classic Release Pipeline
 Action takes Project URL, pipeline name and a [Personal Access Token (PAT)](https://docs.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops) for your DevOps account.
 
 ```yaml
-- uses: tjcorr/pipelines@v1.3
+- uses: tjcorr/pipelines@v1.4
   with:
     azure-devops-project-url: 'https://dev.azure.com/organization/project-name'
     azure-pipeline-name: 'pipeline-name' # name of the Azure pipeline to be triggered
@@ -26,7 +26,7 @@ Action takes Project URL, pipeline name and a [Personal Access Token (PAT)](http
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `azure-devops-project-url` | Yes | Fully qualified URL to the Azure DevOps organization along with project name (e.g., https://dev.azure.com/organization/project-name) |
+| `azure-devops-project-url` | Yes | Fully qualified URL to the Azure DevOps organization along with project name(eg, https://dev.azure.com/organization/project-name or https://server.example.com:8080/tfs/DefaultCollection/project-name)' |
 | `azure-pipeline-name` | No* | Name of the Azure Pipeline to be triggered |
 | `azure-pipeline-id` | No* | The build definition ID of the Azure Pipeline to be triggered |
 | `azure-pipeline-variables` | No | Set/Overwrite pipeline variables as a stringified JSON |
@@ -35,14 +35,15 @@ Action takes Project URL, pipeline name and a [Personal Access Token (PAT)](http
 | `source-version` | No | Specify to override the default sha ($GITHUB_SHA) |
 | `azure-devops-token` | Yes | Personal access token of the user with access to the pipeline |
 
-\* Either `azure-pipeline-name` or `azure-pipeline-id` must be provided.
+> [!NOTE]
+> *Either `azure-pipeline-name` or `azure-pipeline-id` must be provided.
 
 ## Advanced Examples
 
 ### Triggering a pipeline by ID instead of name
 
 ```yaml
-- uses: Azure/pipelines@v1
+- uses: tjcorr/pipelines@v1.4
   with:
     azure-devops-project-url: 'https://dev.azure.com/organization/project-name'
     azure-pipeline-id: '123' # ID of the Azure pipeline to be triggered
@@ -52,7 +53,7 @@ Action takes Project URL, pipeline name and a [Personal Access Token (PAT)](http
 ### Using template parameters and specifying source branch/version
 
 ```yaml
-- uses: Azure/pipelines@v1
+- uses: tjcorr/pipelines@v1.4
   with:
     azure-devops-project-url: 'https://dev.azure.com/organization/project-name'
     azure-pipeline-name: 'pipeline-name'

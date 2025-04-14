@@ -39,10 +39,13 @@ runs:
       run: |
         echo "Verifying new pipeline execution was created"
 
+        # Parse build number from the build url 
+        BUILD_ID=$(echo "$BUILD_URL" | grep -oP '(?<=buildId=)\d+')
+
         # Fetch the latest build details
         BUILD_RESULTS=$(curl -s -H "Authorization: Basic $(echo -n ":$ADO_TOKEN" | base64 -w0)" "$ADO_URL/_apis/build/builds/$BUILD_ID")
 
-          # Verify pipeline-id matches the build definition id, but only if pipeline id is provided
+        # Verify pipeline-id matches the build definition id, but only if pipeline id is provided
         if [ -n "$PIPELINE_ID" ]; then
           BUILD_ID=$(echo "$BUILD_RESULTS" | jq -r '.definition.id')
           if [ "$BUILD_ID" != "$PIPELINE_ID" ]; then
