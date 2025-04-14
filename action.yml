@@ -1,8 +1,9 @@
-name: 'Azure Pipelines Action' 
-description: 'Trigger a run in Azure pipelines' 
+name: 'Run Azure DevOps Pipeline' 
+description: 'Trigger a run of a Azure DevOps Pipeline'
+author: 'tjcorr'
 inputs:
   azure-devops-project-url:
-    description: 'Fullyqualified URL to the Azure DevOps organization along with project name(eg, https://dev.azure.com/organization/project-name or https://server.example.com:8080/tfs/DefaultCollection/project-name)' 
+    description: 'Fully qualified URL to the Azure DevOps organization along with project name(eg, https://dev.azure.com/organization/project-name or https://server.example.com:8080/tfs/DefaultCollection/project-name)' 
     required: true 
   azure-pipeline-name:
     description: 'Name of the Azure Pipline to be triggered' 
@@ -28,3 +29,6 @@ inputs:
 runs: 
   using: 'node20' 
   main: 'dist/index.js'
+branding:
+  icon: 'play'
+  color: 'green'
